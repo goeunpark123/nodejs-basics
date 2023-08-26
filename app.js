@@ -1,31 +1,18 @@
 const express = require("express");
+const bodyParser = require("body-parser");
+
 const app = express();
 
-app.use((req, res, next) => {
-  let body = "";
-  req.on("end", () => {
-    //2
-    const userName = body.split("=")[1];
-    if (userName) {
-      req.body = { name: userName };
-    }
-    console.log(body + "2");
-    next();
-  });
-  req.on("data", (chunk) => {
-    //1
-    body += chunk;
-  });
+app.use(bodyParser.urlencoded({ extended: false }));
+
+app.get("/", (req, res, next) => {
+  res.send(
+    '<form action="/user" method="POST"><input type="text" name="userName"><button type="text">check</button>'
+  );
 });
 
-app.use((req, res, next) => {
-  //second middleware
-  if (req.body) {
-    return res.send("<h1>" + req.body.name + "</h1>");
-  }
-  res.send(
-    '<form method="POST"><input type="text" name="userName"><button type="text">check</button>'
-  );
+app.post("/user", (req, res, next) => {
+  res.send('<h1>User: ' + req.body.userName + '</h1>');
 });
 
 app.listen(5000);
