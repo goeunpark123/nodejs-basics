@@ -1,5 +1,6 @@
 const express = require("express");
 const bodyParser = require("body-parser");
+const mongoDB = require("./mongo");
 
 const placeRoutes = require("./routes/place-routes");
 const userRoutes = require("./routes/user-routes");
@@ -12,6 +13,9 @@ app.use(bodyParser.json()); //.urlencoded()
 
 app.use("/api/places", placeRoutes);
 app.use("/api/users", userRoutes);
+
+app.post("/products", mongoDB.createProduct);
+app.get("/products", mongoDB.getProducts);
 
 app.use((req, res, next) => {
   const error = new HttpError("Could not find this route.", 404);
