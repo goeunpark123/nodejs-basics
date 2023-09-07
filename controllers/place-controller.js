@@ -1,105 +1,170 @@
-const { v4: uuidv4 } = require("uuid");
-const HttpError = require("../models/http-error");
+const mongoose = require("mongoose");
 const { validationResult } = require("express-validator");
 
-let DUMMY_PLACES = [
-  {
-    id: "p1",
-    title: "Empire State Building",
-    description: "One of the most famous sky scrapers",
-    location: {
-      lat: 40.7484405,
-      lng: -73.9882393,
-    },
-    address: "20 W 34th St., New York, NY 10001",
-    creator: "u1",
-  },
-];
+const Place = require("../models/place");
+const User = require("../models/user");
+const HttpError = require("../models/http-error");
 
 //검색
-const getPlaceById = (req, res, next) => {
+const getPlaceById = async (req, res, next) => {
   const placeId = req.params.pid;
+  let place;
 
-  const place = DUMMY_PLACES.find((p) => {
-    return p.id === placeId;
-  });
+  try {
+    place = await Place.findById(placeId);
+  } catch (err) {
+    const error = new HttpError("Could not find a place.", 500);
+
+    return next(error);
+  }
 
   if (!place) {
     throw new HttpError("No match for place id.", 404);
   }
 
-  res.json({ place });
+  res.json({ place: place.toObject({ getters: true }) });
 };
 
-const getPlacesByUserId = (req, res, next) => {
+const getPlacesByUserId = async (req, res, next) => {
   const userId = req.params.uid;
+  //let places;
+  let userPlaces;
 
-  const places = DUMMY_PLACES.find((u) => {
-    return u.creator === userId;
-  });
+  try {
+    userPlaces = await User.findById(userId).populate("places");
+  } catch (err) {
+    const error = new HttpError("Try again!", 500);
 
-  if (!places || places.length === 0) {
+    return next(error);
+  }
+
+  if (!userPlaces || userPlaces.length === 0) {
     return next(new HttpError("No match for user id.", 404)); //두번째 오류 처리 방법
   }
 
-  res.json({ places });
+  res.json({
+    //places: places.map((place) => place.toObject({ getters: true })),
+    places: userPlaces.places,
+  });
 };
 
 //추가
-const createPlace = (req, res, next) => {
-  const { title, description, coordinates, address, creator } = req.body;
-
+const createPlace = async (req, res, next) => {
   const error = validationResult(req);
 
   if (!error.isEmpty()) {
-    throw new HttpError("Invalid input.", 422);
+    const error = new HttpError("Invalid input.", 422);
+
+    return next(error);
   }
 
-  const createdPlace = {
-    id: uuidv4(),
+  const { title, description, address, creator } = req.body;
+  const createdPlace = new Place({
     title,
     description,
-    location: coordinates,
     address,
+    //img,
     creator,
-  };
+  });
+  let user;
 
-  DUMMY_PLACES.push(createdPlace);
+  try {
+    user = await User.findById(creator);
+  } catch (err) {
+    const error = new HttpError("Fail to create a place.", 500);
+
+    return next(error);
+  }
+
+  if (!user) {
+    const error = new HttpError("Couldn't find user.", 404);
+
+    return next(error);
+  }
+
+  try {
+    const s = await mongoose.startSession();
+    s.startTransaction();
+    await createdPlace.save({ session: s }); //새로운 place 저장
+    user.places.push(createdPlace); //user의 places 속성으로 새로운 place 추가
+    await user.save({ session: s }); //places가 추가된 user로 다시 저장
+    await s.commitTransaction();
+  } catch (err) {
+    const error = new HttpError("Fail! Try Again.", 500);
+
+    return next(error);
+  }
 
   res.status(201).json({ place: createdPlace });
 };
 
 //수정
-const updatePlace = (req, res, next) => {
-  const { title, description } = req.body;
-  const placeid = req.params.pid;
-
+const updatePlace = async (req, res, next) => {
   const error = validationResult(req);
 
   if (!error.isEmpty()) {
-    throw new HttpError("Invalid input.", 422);
+    const error = new HttpError("Invalid input.", 422);
+
+    return next(error);
   }
 
-  const updatedPlace = { ...DUMMY_PLACES.find((p) => p.id === placeid) };
-  const placeIndex = DUMMY_PLACES.findIndex((p) => p.id === placeid);
+  const { title, description } = req.body;
+  const placeId = req.params.pid;
+  let place;
 
-  updatedPlace.title = title;
-  updatedPlace.description = description;
+  try {
+    place = await Place.findById(placeId);
+  } catch (err) {
+    const error = new HttpError("Something wrong with finding data!", 500);
 
-  DUMMY_PLACES[placeIndex] = updatedPlace;
+    return next(error);
+  }
 
-  res.status(200).json({ place: updatedPlace });
+  place.title = title;
+  place.description = description;
+
+  try {
+    await place.save();
+  } catch (err) {
+    const error = new (HttpError("Something wrong with saving data!", 500))();
+
+    return next(error);
+  }
+
+  res.status(200).json({ place: place.toObject({ getters: true }) });
 };
 
 //삭제
-const deletePlace = (req, res, next) => {
+const deletePlace = async (req, res, next) => {
   const placeId = req.params.pid;
+  let place;
 
-  if (!DUMMY_PLACES.find((p) => p.id !== placeId)) {
-    throw new HttpError("Delete unavailable.");
+  try {
+    place = await Place.findById(placeId).populate("creator");
+  } catch (err) {
+    const error = new HttpError("Something wrong with finding data!", 500);
+
+    return next(error);
   }
 
-  DUMMY_PLACES = DUMMY_PLACES.filter((p) => p.id !== placeId);
+  if (!place) {
+    const error = new HttpError("Couldn't find a place!", 404);
+
+    return next(error);
+  }
+
+  try {
+    const s = await mongoose.startSession();
+    s.startTransaction();
+    await place.deleteOne({ session: s });
+    place.creator.places.pull(place);
+    await place.creator.save({ session: s });
+    await s.commitTransaction();
+  } catch (err) {
+    const error = new HttpError("Something wrong with deleting data!", 500);
+
+    return next(error);
+  }
 
   res.status(200).json({ message: "Place deleted." });
 };
