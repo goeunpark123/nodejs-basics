@@ -10,6 +10,17 @@ const app = express();
 
 app.use(bodyParser.json()); //.urlencoded()
 
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+
+  next();
+});
+
 app.use("/api/places", placeRoutes);
 app.use("/api/users", userRoutes);
 

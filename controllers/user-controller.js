@@ -1,15 +1,6 @@
 const User = require("../models/user");
 const HttpError = require("../models/http-error");
 
-// const DUMMY_USERS = [
-//   {
-//     id: "u1",
-//     name: "Alex Claremont-Diaz",
-//     email: "theagcd@gmail.com",
-//     password: "hgejhsf",
-//   },
-// ];
-
 const getUsers = async (req, res, next) => {
   let users;
 
@@ -21,7 +12,7 @@ const getUsers = async (req, res, next) => {
     return next(error);
   }
 
-  res.json({ users: users.map((user) => user.toObject()) });
+  res.json({ users: users.map((user) => user.toObject({ getters: true })) });
 };
 
 const signup = async (req, res, next) => {
@@ -80,7 +71,10 @@ const login = async (req, res, next) => {
     return next(error);
   }
 
-  res.json({ message: "Welcome!", name });
+  res.json({
+    message: "Welcome!",
+    user: existingUser.toObject({ getters: true }),
+  });
 };
 
 exports.getUsers = getUsers;
